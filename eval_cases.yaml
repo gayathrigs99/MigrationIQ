@@ -1,0 +1,851 @@
+# Labeled evaluation set for MigrationIQ.
+#
+# Fields
+#   expected_constructs     names the SqlAnalyzer should detect in oracle_sql (exact set)
+#   relevant_sections       knowledge base sections a good retriever should return,
+#                           written as "<file>::<section heading>"
+#   expected_pg_sql         a reference conversion; it must pass the ValidationService
+#   manual_review_expected  true when a human should look at the conversion
+#
+# expected_pg_sql is ONE acceptable answer, not the only one. Run it on PostgreSQL
+# and compare behaviour with Oracle before trusting any case as ground truth.
+
+# ---------------------------------------------------------------- functions
+- id: nvl-basic
+  category: functions
+  oracle_sql: |
+    SELECT NVL(commission, 0) FROM employees
+  expected_pg_sql: |
+    SELECT COALESCE(commission, 0) FROM employees
+  expected_constructs: [NVL]
+  relevant_sections: ["oracle_functions.md::NVL to COALESCE"]
+  manual_review_expected: false
+
+- id: nvl2-basic
+  category: functions
+  oracle_sql: |
+    SELECT NVL2(commission, 'Paid', 'None') FROM employees
+  expected_pg_sql: |
+    SELECT CASE WHEN commission IS NOT NULL THEN 'Paid' ELSE 'None' END FROM employees
+  expected_constructs: [NVL2]
+  relevant_sections: ["oracle_functions.md::NVL2 to CASE"]
+  manual_review_expected: false
+
+- id: decode-basic
+  category: functions
+  oracle_sql: |
+    SELECT DECODE(status, 'A', 'Active', 'I', 'Inactive', 'Unknown') FROM accounts
+  expected_pg_sql: |
+    SELECT CASE status WHEN 'A' THEN 'Active' WHEN 'I' THEN 'Inactive' ELSE 'Unknown' END FROM accounts
+  expected_constructs: [DECODE]
+  relevant_sections: ["oracle_functions.md::DECODE to CASE"]
+  manual_review_expected: false
+
+- id: sysdate-from-dual
+  category: functions
+  oracle_sql: |
+    SELECT SYSDATE FROM DUAL
+  expected_pg_sql: |
+    SELECT LOCALTIMESTAMP
+  expected_constructs: [SYSDATE, DUAL]
+  relevant_sections:
+    - "oracle_functions.md::SYSDATE to CURRENT_TIMESTAMP"
+    - "oracle_functions.md::FROM DUAL"
+  manual_review_expected: false
+
+- id: systimestamp
+  category: functions
+  oracle_sql: |
+    SELECT SYSTIMESTAMP FROM DUAL
+  expected_pg_sql: |
+    SELECT CURRENT_TIMESTAMP
+  expected_constructs: [SYSTIMESTAMP, DUAL]
+  relevant_sections:
+    - "oracle_functions.md::SYSTIMESTAMP to CURRENT_TIMESTAMP"
+    - "oracle_functions.md::FROM DUAL"
+  manual_review_expected: false
+
+- id: date-arithmetic-days
+  category: functions
+  oracle_sql: |
+    SELECT order_date + 7 FROM orders WHERE order_date > SYSDATE - 30
+  expected_pg_sql: |
+    SELECT order_date + INTERVAL '7 days' FROM orders WHERE order_date > LOCALTIMESTAMP - INTERVAL '30 days'
+  expected_constructs: [SYSDATE]
+  relevant_sections:
+    - "oracle_functions.md::Date arithmetic"
+    - "oracle_functions.md::SYSDATE to CURRENT_TIMESTAMP"
+  manual_review_expected: false
+
+- id: to-date-with-time
+  category: functions
+  oracle_sql: |
+    SELECT TO_DATE('2024-01-31 14:30', 'YYYY-MM-DD HH24:MI') FROM DUAL
+  expected_pg_sql: |
+    SELECT to_timestamp('2024-01-31 14:30', 'YYYY-MM-DD HH24:MI')
+  expected_constructs: [TO_DATE, DUAL]
+  relevant_sections:
+    - "oracle_functions.md::TO_DATE keeps no time of day"
+    - "oracle_functions.md::FROM DUAL"
+  manual_review_expected: true
+
+- id: to-char-number
+  category: functions
+  oracle_sql: |
+    SELECT TO_CHAR(salary) FROM employees
+  expected_pg_sql: |
+    SELECT salary::text FROM employees
+  expected_constructs: [TO_CHAR]
+  relevant_sections: ["oracle_functions.md::TO_CHAR on numbers without a format"]
+  manual_review_expected: true
+
+- id: trunc-date-month
+  category: functions
+  oracle_sql: |
+    SELECT TRUNC(SYSDATE), TRUNC(SYSDATE, 'MM') FROM DUAL
+  expected_pg_sql: |
+    SELECT CURRENT_DATE, date_trunc('month', CURRENT_DATE)
+  expected_constructs: [TRUNC, SYSDATE, DUAL]
+  relevant_sections:
+    - "oracle_functions.md::TRUNC on dates"
+    - "oracle_functions.md::SYSDATE to CURRENT_TIMESTAMP"
+    - "oracle_functions.md::FROM DUAL"
+  manual_review_expected: true
+
+- id: add-months
+  category: functions
+  oracle_sql: |
+    SELECT ADD_MONTHS(hire_date, 6) FROM employees
+  expected_pg_sql: |
+    SELECT hire_date + INTERVAL '6 months' FROM employees
+  expected_constructs: [ADD_MONTHS]
+  relevant_sections: ["oracle_functions.md::ADD_MONTHS"]
+  manual_review_expected: true
+
+- id: months-between
+  category: functions
+  oracle_sql: |
+    SELECT MONTHS_BETWEEN(end_date, start_date) FROM contracts
+  expected_pg_sql: |
+    SELECT EXTRACT(YEAR FROM age(end_date, start_date)) * 12 + EXTRACT(MONTH FROM age(end_date, start_date)) FROM contracts
+  expected_constructs: [MONTHS_BETWEEN]
+  relevant_sections: ["oracle_functions.md::MONTHS_BETWEEN"]
+  manual_review_expected: true
+
+- id: listagg
+  category: functions
+  oracle_sql: |
+    SELECT dept_id, LISTAGG(name, ', ') WITHIN GROUP (ORDER BY name) FROM employees GROUP BY dept_id
+  expected_pg_sql: |
+    SELECT dept_id, STRING_AGG(name, ', ' ORDER BY name) FROM employees GROUP BY dept_id
+  expected_constructs: [LISTAGG]
+  relevant_sections: ["oracle_functions.md::LISTAGG to STRING_AGG"]
+  manual_review_expected: false
+
+- id: instr
+  category: functions
+  oracle_sql: |
+    SELECT INSTR(email, '@') FROM users
+  expected_pg_sql: |
+    SELECT strpos(email, '@') FROM users
+  expected_constructs: [INSTR]
+  relevant_sections: ["oracle_functions.md::INSTR to POSITION or strpos"]
+  manual_review_expected: false
+
+- id: rownum-limit
+  category: functions
+  oracle_sql: |
+    SELECT * FROM employees WHERE ROWNUM <= 10
+  expected_pg_sql: |
+    SELECT * FROM employees LIMIT 10
+  expected_constructs: [ROWNUM]
+  relevant_sections: ["oracle_functions.md::ROWNUM to LIMIT"]
+  manual_review_expected: true
+
+- id: rownum-top-n
+  category: functions
+  oracle_sql: |
+    SELECT * FROM (SELECT * FROM employees ORDER BY salary DESC) WHERE ROWNUM <= 5
+  expected_pg_sql: |
+    SELECT * FROM employees ORDER BY salary DESC LIMIT 5
+  expected_constructs: [ROWNUM]
+  relevant_sections: ["oracle_functions.md::ROWNUM to LIMIT"]
+  manual_review_expected: true
+
+- id: sequence-nextval
+  category: functions
+  oracle_sql: |
+    INSERT INTO orders (id, customer_id) VALUES (order_seq.NEXTVAL, 42)
+  expected_pg_sql: |
+    INSERT INTO orders (id, customer_id) VALUES (nextval('order_seq'), 42)
+  expected_constructs: [SEQUENCE_NEXTVAL]
+  relevant_sections: ["oracle_functions.md::Sequences: NEXTVAL and CURRVAL"]
+  manual_review_expected: false
+
+- id: sequence-currval
+  category: functions
+  oracle_sql: |
+    SELECT order_seq.CURRVAL FROM DUAL
+  expected_pg_sql: |
+    SELECT currval('order_seq')
+  expected_constructs: [SEQUENCE_NEXTVAL, DUAL]
+  relevant_sections:
+    - "oracle_functions.md::Sequences: NEXTVAL and CURRVAL"
+    - "oracle_functions.md::FROM DUAL"
+  manual_review_expected: false
+
+- id: minus-operator
+  category: functions
+  oracle_sql: |
+    SELECT id FROM old_customers MINUS SELECT id FROM new_customers
+  expected_pg_sql: |
+    SELECT id FROM old_customers EXCEPT SELECT id FROM new_customers
+  expected_constructs: [MINUS]
+  relevant_sections: ["oracle_functions.md::MINUS to EXCEPT"]
+  manual_review_expected: false
+
+- id: outer-join-plus
+  category: functions
+  oracle_sql: |
+    SELECT e.name, d.name FROM employees e, departments d WHERE e.dept_id = d.id(+)
+  expected_pg_sql: |
+    SELECT e.name, d.name FROM employees e LEFT JOIN departments d ON e.dept_id = d.id
+  expected_constructs: [OUTER_JOIN_PLUS]
+  relevant_sections: ["oracle_functions.md::Oracle outer join operator (+)"]
+  manual_review_expected: true
+
+- id: connect-by-hierarchy
+  category: functions
+  oracle_sql: |
+    SELECT id, name, LEVEL FROM employees
+    START WITH manager_id IS NULL
+    CONNECT BY PRIOR id = manager_id
+  expected_pg_sql: |
+    WITH RECURSIVE tree AS (
+      SELECT id, name, manager_id, 1 AS level FROM employees WHERE manager_id IS NULL
+      UNION ALL
+      SELECT e.id, e.name, e.manager_id, t.level + 1
+      FROM employees e JOIN tree t ON e.manager_id = t.id
+    )
+    SELECT id, name, level FROM tree
+  expected_constructs: [CONNECT_BY]
+  relevant_sections: ["oracle_functions.md::CONNECT BY to WITH RECURSIVE"]
+  manual_review_expected: true
+
+- id: merge-upsert
+  category: functions
+  oracle_sql: |
+    MERGE INTO accounts a
+    USING staging s ON (a.id = s.id)
+    WHEN MATCHED THEN UPDATE SET a.balance = s.balance
+    WHEN NOT MATCHED THEN INSERT (id, balance) VALUES (s.id, s.balance)
+  expected_pg_sql: |
+    INSERT INTO accounts (id, balance)
+    SELECT id, balance FROM staging
+    ON CONFLICT (id) DO UPDATE SET balance = EXCLUDED.balance
+  expected_constructs: [MERGE]
+  relevant_sections: ["oracle_functions.md::MERGE"]
+  manual_review_expected: true
+
+# --------------------------------------------------------------- data types
+- id: ddl-basic-types
+  category: data_types
+  oracle_sql: |
+    CREATE TABLE employees (
+      id NUMBER(10) PRIMARY KEY,
+      name VARCHAR2(100 CHAR) NOT NULL,
+      notes CLOB,
+      hired DATE
+    )
+  expected_pg_sql: |
+    CREATE TABLE employees (
+      id bigint PRIMARY KEY,
+      name varchar(100) NOT NULL,
+      notes text,
+      hired timestamp(0)
+    )
+  expected_constructs: [NUMBER, VARCHAR2, LOB_TYPES]
+  relevant_sections:
+    - "data_type_mapping.md::NUMBER"
+    - "data_type_mapping.md::VARCHAR2 and NVARCHAR2"
+    - "data_type_mapping.md::CLOB, NCLOB and LONG"
+    - "data_type_mapping.md::DATE"
+  manual_review_expected: false
+
+- id: ddl-numbers-and-blob
+  category: data_types
+  oracle_sql: |
+    CREATE TABLE prices (item_id NUMBER(8), amount NUMBER(12,2), image BLOB)
+  expected_pg_sql: |
+    CREATE TABLE prices (item_id integer, amount numeric(12,2), image bytea)
+  expected_constructs: [NUMBER, LOB_TYPES]
+  relevant_sections:
+    - "data_type_mapping.md::NUMBER"
+    - "data_type_mapping.md::BLOB, RAW and LONG RAW"
+  manual_review_expected: false
+
+- id: ddl-timestamp-and-nvarchar
+  category: data_types
+  oracle_sql: |
+    CREATE TABLE events (id NUMBER(4), created TIMESTAMP WITH TIME ZONE, payload NVARCHAR2(200))
+  expected_pg_sql: |
+    CREATE TABLE events (id smallint, created timestamptz, payload varchar(200))
+  expected_constructs: [NUMBER, VARCHAR2]
+  relevant_sections:
+    - "data_type_mapping.md::NUMBER"
+    - "data_type_mapping.md::TIMESTAMP types"
+    - "data_type_mapping.md::VARCHAR2 and NVARCHAR2"
+  manual_review_expected: false
+
+# --------------------------------------------------- procedures and functions
+- id: function-nvl-bonus
+  category: procedures
+  oracle_sql: |
+    CREATE OR REPLACE FUNCTION get_bonus(p_salary IN NUMBER) RETURN NUMBER IS
+    BEGIN
+      RETURN NVL(p_salary, 0) * 0.1;
+    END;
+  expected_pg_sql: |
+    CREATE OR REPLACE FUNCTION get_bonus(p_salary numeric) RETURNS numeric
+    LANGUAGE plpgsql AS $$
+    BEGIN
+      RETURN COALESCE(p_salary, 0) * 0.1;
+    END;
+    $$;
+  expected_constructs: [ROUTINE_DEFINITION, NUMBER, NVL]
+  relevant_sections:
+    - "procedure_migration.md::Function structure"
+    - "oracle_functions.md::NVL to COALESCE"
+    - "data_type_mapping.md::NUMBER"
+  manual_review_expected: false
+
+- id: procedure-update
+  category: procedures
+  oracle_sql: |
+    CREATE OR REPLACE PROCEDURE raise_salary(p_id IN NUMBER, p_pct IN NUMBER) IS
+    BEGIN
+      UPDATE employees SET salary = salary * (1 + p_pct / 100) WHERE id = p_id;
+    END;
+  expected_pg_sql: |
+    CREATE OR REPLACE PROCEDURE raise_salary(p_id integer, p_pct numeric)
+    LANGUAGE plpgsql AS $$
+    BEGIN
+      UPDATE employees SET salary = salary * (1 + p_pct / 100) WHERE id = p_id;
+    END;
+    $$;
+  expected_constructs: [ROUTINE_DEFINITION, NUMBER]
+  relevant_sections:
+    - "procedure_migration.md::Procedure structure"
+    - "procedure_migration.md::Parameter modes"
+    - "data_type_mapping.md::NUMBER"
+  manual_review_expected: false
+
+- id: function-select-into-no-data-found
+  category: exceptions
+  oracle_sql: |
+    CREATE OR REPLACE FUNCTION get_name(p_id IN NUMBER) RETURN VARCHAR2 IS
+      v_name VARCHAR2(100);
+    BEGIN
+      SELECT name INTO v_name FROM employees WHERE id = p_id;
+      RETURN v_name;
+    EXCEPTION
+      WHEN NO_DATA_FOUND THEN
+        RETURN NULL;
+    END;
+  expected_pg_sql: |
+    CREATE OR REPLACE FUNCTION get_name(p_id integer) RETURNS varchar
+    LANGUAGE plpgsql AS $$
+    DECLARE
+      v_name varchar(100);
+    BEGIN
+      SELECT name INTO STRICT v_name FROM employees WHERE id = p_id;
+      RETURN v_name;
+    EXCEPTION
+      WHEN no_data_found THEN
+        RETURN NULL;
+    END;
+    $$;
+  expected_constructs: [ROUTINE_DEFINITION, NUMBER, VARCHAR2, EXCEPTION_BLOCK]
+  relevant_sections:
+    - "exception_handling.md::SELECT INTO and NO_DATA_FOUND"
+    - "exception_handling.md::Exception block syntax"
+    - "procedure_migration.md::Function structure"
+  manual_review_expected: false
+
+- id: procedure-raise-application-error
+  category: exceptions
+  oracle_sql: |
+    CREATE OR REPLACE PROCEDURE withdraw(p_id IN NUMBER, p_amount IN NUMBER) IS
+      v_balance NUMBER;
+    BEGIN
+      SELECT balance INTO v_balance FROM accounts WHERE id = p_id;
+      IF v_balance < p_amount THEN
+        RAISE_APPLICATION_ERROR(-20001, 'Insufficient balance');
+      END IF;
+      UPDATE accounts SET balance = balance - p_amount WHERE id = p_id;
+    END;
+  expected_pg_sql: |
+    CREATE OR REPLACE PROCEDURE withdraw(p_id integer, p_amount numeric)
+    LANGUAGE plpgsql AS $$
+    DECLARE
+      v_balance numeric;
+    BEGIN
+      SELECT balance INTO STRICT v_balance FROM accounts WHERE id = p_id;
+      IF v_balance < p_amount THEN
+        RAISE EXCEPTION 'Insufficient balance' USING ERRCODE = 'P0001';
+      END IF;
+      UPDATE accounts SET balance = balance - p_amount WHERE id = p_id;
+    END;
+    $$;
+  expected_constructs: [ROUTINE_DEFINITION, NUMBER, RAISE_APPLICATION_ERROR]
+  relevant_sections:
+    - "exception_handling.md::RAISE_APPLICATION_ERROR"
+    - "exception_handling.md::SELECT INTO and NO_DATA_FOUND"
+    - "procedure_migration.md::Procedure structure"
+  manual_review_expected: true
+
+- id: procedure-dup-val-on-index
+  category: exceptions
+  oracle_sql: |
+    CREATE OR REPLACE PROCEDURE add_user(p_email IN VARCHAR2) IS
+    BEGIN
+      INSERT INTO users (email) VALUES (p_email);
+    EXCEPTION
+      WHEN DUP_VAL_ON_INDEX THEN
+        DBMS_OUTPUT.PUT_LINE('Duplicate email');
+    END;
+  expected_pg_sql: |
+    CREATE OR REPLACE PROCEDURE add_user(p_email varchar)
+    LANGUAGE plpgsql AS $$
+    BEGIN
+      INSERT INTO users (email) VALUES (p_email);
+    EXCEPTION
+      WHEN unique_violation THEN
+        RAISE NOTICE 'Duplicate email';
+    END;
+    $$;
+  expected_constructs: [ROUTINE_DEFINITION, VARCHAR2, EXCEPTION_BLOCK, ORACLE_EXCEPTION_NAME, DBMS_OUTPUT]
+  relevant_sections:
+    - "exception_handling.md::Predefined exception names"
+    - "procedure_migration.md::DBMS_OUTPUT"
+    - "data_type_mapping.md::VARCHAR2 and NVARCHAR2"
+  manual_review_expected: false
+
+- id: procedure-sqlcode-sqlerrm
+  category: exceptions
+  oracle_sql: |
+    CREATE OR REPLACE PROCEDURE log_failure IS
+    BEGIN
+      INSERT INTO jobs (id) VALUES (1);
+    EXCEPTION
+      WHEN OTHERS THEN
+        DBMS_OUTPUT.PUT_LINE('Error ' || SQLCODE || ': ' || SQLERRM);
+    END;
+  expected_pg_sql: |
+    CREATE OR REPLACE PROCEDURE log_failure()
+    LANGUAGE plpgsql AS $$
+    BEGIN
+      INSERT INTO jobs (id) VALUES (1);
+    EXCEPTION
+      WHEN OTHERS THEN
+        RAISE NOTICE 'Error % : %', SQLSTATE, SQLERRM;
+    END;
+    $$;
+  expected_constructs: [ROUTINE_DEFINITION, EXCEPTION_BLOCK, SQLCODE, DBMS_OUTPUT]
+  relevant_sections:
+    - "exception_handling.md::SQLCODE and SQLERRM"
+    - "procedure_migration.md::DBMS_OUTPUT"
+  manual_review_expected: false
+
+- id: procedure-user-exception
+  category: exceptions
+  oracle_sql: |
+    CREATE OR REPLACE PROCEDURE check_age(p_age IN NUMBER) IS
+      e_invalid_age EXCEPTION;
+    BEGIN
+      IF p_age < 0 THEN
+        RAISE e_invalid_age;
+      END IF;
+    EXCEPTION
+      WHEN e_invalid_age THEN
+        RAISE_APPLICATION_ERROR(-20002, 'Age cannot be negative');
+    END;
+  expected_pg_sql: |
+    CREATE OR REPLACE PROCEDURE check_age(p_age numeric)
+    LANGUAGE plpgsql AS $$
+    BEGIN
+      IF p_age < 0 THEN
+        RAISE EXCEPTION 'Age cannot be negative' USING ERRCODE = 'U0002';
+      END IF;
+    END;
+    $$;
+  expected_constructs: [ROUTINE_DEFINITION, NUMBER, EXCEPTION_BLOCK, RAISE_APPLICATION_ERROR]
+  relevant_sections:
+    - "exception_handling.md::User-defined exceptions"
+    - "exception_handling.md::RAISE_APPLICATION_ERROR"
+  manual_review_expected: true
+
+- id: procedure-pragma-exception-init
+  category: exceptions
+  oracle_sql: |
+    CREATE OR REPLACE PROCEDURE delete_dept(p_id IN NUMBER) IS
+      e_child_exists EXCEPTION;
+      PRAGMA EXCEPTION_INIT(e_child_exists, -2292);
+    BEGIN
+      DELETE FROM departments WHERE id = p_id;
+    EXCEPTION
+      WHEN e_child_exists THEN
+        DBMS_OUTPUT.PUT_LINE('Department has employees');
+    END;
+  expected_pg_sql: |
+    CREATE OR REPLACE PROCEDURE delete_dept(p_id integer)
+    LANGUAGE plpgsql AS $$
+    BEGIN
+      DELETE FROM departments WHERE id = p_id;
+    EXCEPTION
+      WHEN foreign_key_violation THEN
+        RAISE NOTICE 'Department has employees';
+    END;
+    $$;
+  expected_constructs: [ROUTINE_DEFINITION, NUMBER, PRAGMA_EXCEPTION_INIT, EXCEPTION_BLOCK, DBMS_OUTPUT]
+  relevant_sections:
+    - "exception_handling.md::User-defined exceptions"
+    - "procedure_migration.md::DBMS_OUTPUT"
+  manual_review_expected: true
+
+# ----------------------------------------------------------------- cursors
+- id: procedure-explicit-cursor
+  category: cursors
+  oracle_sql: |
+    CREATE OR REPLACE PROCEDURE print_employees(p_dept IN NUMBER) IS
+      CURSOR c_emp IS SELECT id, name FROM employees WHERE dept_id = p_dept;
+      v_id NUMBER;
+      v_name VARCHAR2(100);
+    BEGIN
+      OPEN c_emp;
+      LOOP
+        FETCH c_emp INTO v_id, v_name;
+        EXIT WHEN c_emp%NOTFOUND;
+        DBMS_OUTPUT.PUT_LINE(v_id || ' ' || v_name);
+      END LOOP;
+      CLOSE c_emp;
+    END;
+  expected_pg_sql: |
+    CREATE OR REPLACE PROCEDURE print_employees(p_dept integer)
+    LANGUAGE plpgsql AS $$
+    DECLARE
+      c_emp CURSOR FOR SELECT id, name FROM employees WHERE dept_id = p_dept;
+      v_id integer;
+      v_name varchar(100);
+    BEGIN
+      OPEN c_emp;
+      LOOP
+        FETCH c_emp INTO v_id, v_name;
+        EXIT WHEN NOT FOUND;
+        RAISE NOTICE '% %', v_id, v_name;
+      END LOOP;
+      CLOSE c_emp;
+    END;
+    $$;
+  expected_constructs: [ROUTINE_DEFINITION, NUMBER, VARCHAR2, EXPLICIT_CURSOR, DBMS_OUTPUT]
+  relevant_sections:
+    - "cursor_migration.md::Explicit cursor declaration"
+    - "cursor_migration.md::Cursor attributes"
+    - "procedure_migration.md::DBMS_OUTPUT"
+  manual_review_expected: false
+
+- id: procedure-cursor-for-loop
+  category: cursors
+  oracle_sql: |
+    CREATE OR REPLACE PROCEDURE give_raises IS
+    BEGIN
+      FOR r IN (SELECT id, salary FROM employees) LOOP
+        UPDATE employees SET salary = r.salary * 1.05 WHERE id = r.id;
+      END LOOP;
+    END;
+  expected_pg_sql: |
+    CREATE OR REPLACE PROCEDURE give_raises()
+    LANGUAGE plpgsql AS $$
+    BEGIN
+      FOR r IN SELECT id, salary FROM employees LOOP
+        UPDATE employees SET salary = r.salary * 1.05 WHERE id = r.id;
+      END LOOP;
+    END;
+    $$;
+  expected_constructs: [ROUTINE_DEFINITION]
+  relevant_sections:
+    - "cursor_migration.md::Cursor FOR loop"
+    - "cursor_migration.md::Prefer set-based SQL"
+  manual_review_expected: false
+
+- id: procedure-ref-cursor
+  category: cursors
+  oracle_sql: |
+    CREATE OR REPLACE PROCEDURE get_employees(p_cur OUT SYS_REFCURSOR) IS
+    BEGIN
+      OPEN p_cur FOR SELECT id, name FROM employees;
+    END;
+  expected_pg_sql: |
+    CREATE OR REPLACE PROCEDURE get_employees(INOUT p_cur refcursor)
+    LANGUAGE plpgsql AS $$
+    BEGIN
+      OPEN p_cur FOR SELECT id, name FROM employees;
+    END;
+    $$;
+  expected_constructs: [ROUTINE_DEFINITION, REF_CURSOR]
+  relevant_sections:
+    - "cursor_migration.md::REF CURSOR and SYS_REFCURSOR"
+    - "procedure_migration.md::Parameter modes"
+  manual_review_expected: false
+
+- id: procedure-bulk-collect-forall
+  category: cursors
+  oracle_sql: |
+    CREATE OR REPLACE PROCEDURE bump_dept(p_dept IN NUMBER) IS
+      TYPE t_ids IS TABLE OF employees.id%TYPE;
+      v_ids t_ids;
+    BEGIN
+      SELECT id BULK COLLECT INTO v_ids FROM employees WHERE dept_id = p_dept;
+      FORALL i IN 1..v_ids.COUNT
+        UPDATE employees SET salary = salary * 1.1 WHERE id = v_ids(i);
+    END;
+  expected_pg_sql: |
+    CREATE OR REPLACE PROCEDURE bump_dept(p_dept integer)
+    LANGUAGE plpgsql AS $$
+    BEGIN
+      UPDATE employees SET salary = salary * 1.1 WHERE dept_id = p_dept;
+    END;
+    $$;
+  expected_constructs: [ROUTINE_DEFINITION, NUMBER, BULK_COLLECT, FORALL]
+  relevant_sections:
+    - "cursor_migration.md::BULK COLLECT"
+    - "cursor_migration.md::FORALL"
+    - "cursor_migration.md::PL/SQL collections"
+    - "cursor_migration.md::Prefer set-based SQL"
+  manual_review_expected: true
+
+# ------------------------------------------- advanced procedural constructs
+- id: procedure-autonomous-transaction
+  category: procedures
+  oracle_sql: |
+    CREATE OR REPLACE PROCEDURE write_audit(p_msg IN VARCHAR2) IS
+      PRAGMA AUTONOMOUS_TRANSACTION;
+    BEGIN
+      INSERT INTO audit_log (message) VALUES (p_msg);
+      COMMIT;
+    END;
+  expected_pg_sql: |
+    -- Requires the dblink extension (loop-back connection emulates the autonomous commit).
+    CREATE OR REPLACE PROCEDURE write_audit(p_msg varchar)
+    LANGUAGE plpgsql AS $$
+    BEGIN
+      PERFORM dblink_exec(
+        'dbname=' || current_database(),
+        format('INSERT INTO audit_log (message) VALUES (%L)', p_msg)
+      );
+    END;
+    $$;
+  expected_constructs: [ROUTINE_DEFINITION, VARCHAR2, PRAGMA_AUTONOMOUS_TRANSACTION]
+  relevant_sections:
+    - "procedure_migration.md::PRAGMA AUTONOMOUS_TRANSACTION"
+    - "procedure_migration.md::Transaction control"
+  manual_review_expected: true
+
+- id: function-dynamic-sql
+  category: procedures
+  oracle_sql: |
+    CREATE OR REPLACE FUNCTION count_rows(p_table IN VARCHAR2, p_id IN NUMBER) RETURN NUMBER IS
+      v_count NUMBER;
+    BEGIN
+      EXECUTE IMMEDIATE 'SELECT COUNT(*) FROM ' || p_table || ' WHERE id = :1' INTO v_count USING p_id;
+      RETURN v_count;
+    END;
+  expected_pg_sql: |
+    CREATE OR REPLACE FUNCTION count_rows(p_table varchar, p_id integer) RETURNS numeric
+    LANGUAGE plpgsql AS $$
+    DECLARE
+      v_count numeric;
+    BEGIN
+      EXECUTE format('SELECT COUNT(*) FROM %I WHERE id = $1', p_table) INTO v_count USING p_id;
+      RETURN v_count;
+    END;
+    $$;
+  expected_constructs: [ROUTINE_DEFINITION, VARCHAR2, NUMBER, EXECUTE_IMMEDIATE]
+  relevant_sections:
+    - "procedure_migration.md::Dynamic SQL"
+    - "procedure_migration.md::Function structure"
+  manual_review_expected: true
+
+- id: trigger-before-update
+  category: procedures
+  oracle_sql: |
+    CREATE OR REPLACE TRIGGER trg_set_updated
+    BEFORE UPDATE ON employees
+    FOR EACH ROW
+    BEGIN
+      :NEW.updated_at := SYSDATE;
+    END;
+  expected_pg_sql: |
+    CREATE OR REPLACE FUNCTION trg_set_updated_fn() RETURNS trigger
+    LANGUAGE plpgsql AS $$
+    BEGIN
+      NEW.updated_at := LOCALTIMESTAMP;
+      RETURN NEW;
+    END;
+    $$;
+
+    CREATE TRIGGER trg_set_updated BEFORE UPDATE ON employees
+    FOR EACH ROW EXECUTE FUNCTION trg_set_updated_fn();
+  expected_constructs: [SYSDATE]
+  relevant_sections:
+    - "procedure_migration.md::Triggers"
+    - "oracle_functions.md::SYSDATE to CURRENT_TIMESTAMP"
+  manual_review_expected: false
+
+- id: package-body
+  category: procedures
+  oracle_sql: |
+    CREATE OR REPLACE PACKAGE BODY emp_pkg IS
+      PROCEDURE hire(p_name IN VARCHAR2) IS
+      BEGIN
+        INSERT INTO employees (name) VALUES (p_name);
+      END hire;
+    END emp_pkg;
+  expected_pg_sql: |
+    CREATE SCHEMA IF NOT EXISTS emp_pkg;
+
+    CREATE OR REPLACE PROCEDURE emp_pkg.hire(p_name varchar)
+    LANGUAGE plpgsql AS $$
+    BEGIN
+      INSERT INTO employees (name) VALUES (p_name);
+    END;
+    $$;
+  expected_constructs: [PACKAGE, VARCHAR2]
+  relevant_sections:
+    - "procedure_migration.md::Packages"
+    - "data_type_mapping.md::VARCHAR2 and NVARCHAR2"
+  manual_review_expected: true
+
+- id: function-rowtype
+  category: procedures
+  oracle_sql: |
+    CREATE OR REPLACE FUNCTION get_salary(p_id IN NUMBER) RETURN NUMBER IS
+      r_emp employees%ROWTYPE;
+    BEGIN
+      SELECT * INTO r_emp FROM employees WHERE id = p_id;
+      RETURN r_emp.salary;
+    END;
+  expected_pg_sql: |
+    CREATE OR REPLACE FUNCTION get_salary(p_id integer) RETURNS numeric
+    LANGUAGE plpgsql AS $$
+    DECLARE
+      r_emp employees%ROWTYPE;
+    BEGIN
+      SELECT * INTO STRICT r_emp FROM employees WHERE id = p_id;
+      RETURN r_emp.salary;
+    END;
+    $$;
+  expected_constructs: [ROUTINE_DEFINITION, NUMBER, ROWTYPE_ATTRIBUTE]
+  relevant_sections:
+    - "data_type_mapping.md::Anchored types"
+    - "exception_handling.md::SELECT INTO and NO_DATA_FOUND"
+    - "procedure_migration.md::Function structure"
+  manual_review_expected: false
+
+- id: function-deterministic
+  category: procedures
+  oracle_sql: |
+    CREATE OR REPLACE FUNCTION tax(p_amount IN NUMBER) RETURN NUMBER DETERMINISTIC IS
+    BEGIN
+      RETURN p_amount * 0.2;
+    END;
+  expected_pg_sql: |
+    CREATE OR REPLACE FUNCTION tax(p_amount numeric) RETURNS numeric
+    LANGUAGE plpgsql IMMUTABLE AS $$
+    BEGIN
+      RETURN p_amount * 0.2;
+    END;
+    $$;
+  expected_constructs: [ROUTINE_DEFINITION, NUMBER]
+  relevant_sections:
+    - "procedure_migration.md::DETERMINISTIC and function volatility"
+    - "procedure_migration.md::Function structure"
+  manual_review_expected: false
+
+- id: procedure-in-out-params
+  category: procedures
+  oracle_sql: |
+    CREATE OR REPLACE PROCEDURE bump(p_value IN OUT NUMBER, p_steps OUT NUMBER) IS
+    BEGIN
+      p_value := p_value + 1;
+      p_steps := 1;
+    END;
+  expected_pg_sql: |
+    CREATE OR REPLACE PROCEDURE bump(INOUT p_value numeric, OUT p_steps numeric)
+    LANGUAGE plpgsql AS $$
+    BEGIN
+      p_value := p_value + 1;
+      p_steps := 1;
+    END;
+    $$;
+  expected_constructs: [ROUTINE_DEFINITION, NUMBER]
+  relevant_sections:
+    - "procedure_migration.md::Parameter modes"
+    - "procedure_migration.md::Procedure structure"
+  manual_review_expected: false
+
+# ---------------------------------------------------- several constructs at once
+- id: combined-join-nvl-decode-rownum
+  category: combined
+  oracle_sql: |
+    SELECT e.name, NVL(d.name, 'none'), DECODE(e.status, 'A', 1, 0)
+    FROM employees e, departments d
+    WHERE e.dept_id = d.id(+) AND ROWNUM <= 20
+  expected_pg_sql: |
+    SELECT e.name, COALESCE(d.name, 'none'), CASE e.status WHEN 'A' THEN 1 ELSE 0 END
+    FROM employees e LEFT JOIN departments d ON e.dept_id = d.id
+    LIMIT 20
+  expected_constructs: [NVL, DECODE, OUTER_JOIN_PLUS, ROWNUM]
+  relevant_sections:
+    - "oracle_functions.md::NVL to COALESCE"
+    - "oracle_functions.md::DECODE to CASE"
+    - "oracle_functions.md::Oracle outer join operator (+)"
+    - "oracle_functions.md::ROWNUM to LIMIT"
+  manual_review_expected: true
+
+- id: combined-nvl-to-char
+  category: combined
+  oracle_sql: |
+    SELECT NVL(TO_CHAR(order_date, 'YYYY-MM-DD'), 'n/a') FROM orders
+  expected_pg_sql: |
+    SELECT COALESCE(to_char(order_date, 'YYYY-MM-DD'), 'n/a') FROM orders
+  expected_constructs: [NVL, TO_CHAR]
+  relevant_sections:
+    - "oracle_functions.md::NVL to COALESCE"
+    - "oracle_functions.md::TO_CHAR on numbers without a format"
+  manual_review_expected: true
+
+- id: combined-trunc-group-by
+  category: combined
+  oracle_sql: |
+    SELECT TRUNC(order_date, 'MM'), SUM(total) FROM orders GROUP BY TRUNC(order_date, 'MM')
+  expected_pg_sql: |
+    SELECT date_trunc('month', order_date), SUM(total) FROM orders GROUP BY date_trunc('month', order_date)
+  expected_constructs: [TRUNC]
+  relevant_sections: ["oracle_functions.md::TRUNC on dates"]
+  manual_review_expected: true
+
+- id: combined-listagg-add-months
+  category: combined
+  oracle_sql: |
+    SELECT LISTAGG(name, ',') WITHIN GROUP (ORDER BY id)
+    FROM employees WHERE hire_date > ADD_MONTHS(SYSDATE, -12)
+  expected_pg_sql: |
+    SELECT STRING_AGG(name, ',' ORDER BY id)
+    FROM employees WHERE hire_date > LOCALTIMESTAMP - INTERVAL '12 months'
+  expected_constructs: [LISTAGG, ADD_MONTHS, SYSDATE]
+  relevant_sections:
+    - "oracle_functions.md::LISTAGG to STRING_AGG"
+    - "oracle_functions.md::ADD_MONTHS"
+    - "oracle_functions.md::SYSDATE to CURRENT_TIMESTAMP"
+  manual_review_expected: true
